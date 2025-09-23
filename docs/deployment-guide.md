@@ -11,7 +11,7 @@ This document provides comprehensive deployment instructions for the Qwen Code P
 #### Standard Installation
 ```bash
 # Install latest stable version
-pip install qwen-code
+pip install qwen-code-py
 
 # Verify installation
 qwen --version
@@ -23,13 +23,13 @@ qwen config setup
 #### Development Installation
 ```bash
 # Install with development dependencies
-pip install qwen-code[dev]
+pip install qwen-code-py[dev]
 
 # Install pre-release versions
 pip install --pre qwen-code
 
 # Install specific version
-pip install qwen-code==2.0.0
+pip install qwen-code-py==2.0.0
 ```
 
 ### 2.2 Installation from Source
@@ -81,7 +81,7 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Install qwen-code
-RUN pip install qwen-code
+RUN pip install qwen-code-py
 
 # Create non-root user
 RUN useradd -m -u 1000 qwen
@@ -670,7 +670,7 @@ The Qwen Code CLI uses the Rich library for enhanced visual presentation:
 
 ```bash
 # Rich is automatically installed as a dependency
-pip install qwen-code
+pip install qwen-code-py
 
 # Verify Rich installation
 python -c "import rich; print(f'Rich version: {rich.__version__}')"

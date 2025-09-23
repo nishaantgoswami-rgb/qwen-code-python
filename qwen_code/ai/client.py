@@ -108,7 +108,7 @@ class QwenClient(AIClient):
         headers["X-DashScope-CacheControl"] = "enable"
         
         # Add UserAgent header as required by DashScope API
-        headers["X-DashScope-UserAgent"] = "qwen-code/2.0.0"
+        headers["X-DashScope-UserAgent"] = "qwen-code-py/2.0.0"
         
         return headers
     

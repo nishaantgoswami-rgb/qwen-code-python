@@ -6,7 +6,7 @@ from setuptools import setup, find_packages
 
 
 setup(
-    name="qwen-code",
+    name="qwen-code-py",
     version="2.0.0",
     description="AI-powered coding assistant CLI tool",
     long_description=open("README.md").read() if open("README.md").read() else "Qwen Code - AI-powered coding assistant",
@@ -37,7 +37,7 @@ setup(
     },
     entry_points={
         "console_scripts": [
-            "qwen=qwen_code.cli.main:main",
+            "qwenpy=qwen_code.cli.main:main",
         ],
     },
     classifiers=[

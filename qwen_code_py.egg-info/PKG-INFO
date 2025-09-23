@@ -1,3 +1,43 @@
+Metadata-Version: 2.4
+Name: qwen-code-py
+Version: 2.0.0
+Summary: AI-powered coding assistant CLI tool
+Home-page: https://github.com/QwenLM/qwen-code-python
+Author: Qwen Team
+Author-email: Qwen Team <qwen@alibabacloud.com>
+License: Apache-2.0
+Project-URL: Homepage, https://github.com/QwenLM/qwen-code-python
+Project-URL: Repository, https://github.com/QwenLM/qwen-code-python
+Classifier: Development Status :: 4 - Beta
+Classifier: Intended Audience :: Developers
+Classifier: License :: OSI Approved :: Apache Software License
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.8
+Classifier: Programming Language :: Python :: 3.9
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Requires-Python: >=3.8
+Description-Content-Type: text/markdown
+Requires-Dist: click>=8.0.0
+Requires-Dist: requests>=2.25.0
+Requires-Dist: pyyaml>=5.4.0
+Requires-Dist: rich>=10.0.0
+Requires-Dist: prompt_toolkit>=3.0.0
+Provides-Extra: dev
+Requires-Dist: pytest>=6.0.0; extra == "dev"
+Requires-Dist: pytest-asyncio>=0.15.0; extra == "dev"
+Requires-Dist: black>=21.0.0; extra == "dev"
+Requires-Dist: flake8>=3.9.0; extra == "dev"
+Requires-Dist: mypy>=0.910; extra == "dev"
+Provides-Extra: test
+Requires-Dist: pytest>=6.0.0; extra == "test"
+Requires-Dist: pytest-asyncio>=0.15.0; extra == "test"
+Requires-Dist: pytest-cov>=2.12.0; extra == "test"
+Dynamic: author
+Dynamic: home-page
+Dynamic: requires-python
+
 # Qwen Code Py
 
 Qwen Code Py is an AI-powered command-line workflow tool specifically optimized for Qwen3-Coder models. It's a Python rewrite of the original Node.js/TypeScript implementation, adapted from Google's Gemini CLI with enhanced parsing and tool support.

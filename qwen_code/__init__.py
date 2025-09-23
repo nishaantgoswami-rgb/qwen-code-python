@@ -1,5 +1,5 @@
 """
-Qwen Code - AI-powered coding assistant CLI tool.
+Qwen Code Py - AI-powered coding assistant CLI tool.
 
 This package provides an AI-powered command-line interface for code analysis,
 refactoring, and workflow automation, specifically optimized for Qwen3-Coder models.

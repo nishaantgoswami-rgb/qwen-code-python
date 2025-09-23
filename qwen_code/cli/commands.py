@@ -20,7 +20,7 @@ from rich import print as rich_print
 import threading
 import queue
 
-# Import our keyboard handler
+# Import our enhanced keyboard handler
 from qwen_code.cli.keyboard_handler import KeyboardHandler
 
 console = Console()
@@ -101,8 +101,8 @@ async def _run_interactive_session(model: str) -> None:
                 # Get user input with enhanced keyboard handling
                 user_input = keyboard_handler.get_input_with_features()
                 
-                # Check for exit commands
-                if user_input.lower() in ['exit', 'quit']:
+                # Special handling for keyboard interrupts
+                if user_input == 'exit':
                     console.print("[yellow]Goodbye![/yellow]")
                     break
                 
@@ -118,6 +118,18 @@ async def _run_interactive_session(model: str) -> None:
                     elif user_input == '/stats':
                         _show_stats(messages)
                         continue
+                    elif user_input == '/status':
+                        _show_status()
+                        continue
+                    elif user_input == '/auth':
+                        console.print("[yellow]Use 'qwen auth' command to manage authentication[/yellow]")
+                        continue
+                    elif user_input == '/config':
+                        console.print("[yellow]Use 'qwen config' command to manage configuration[/yellow]")
+                        continue
+                    elif user_input == '/quit':
+                        console.print("[yellow]Goodbye![/yellow]")
+                        break
                     else:
                         console.print("[yellow]Unknown command. Type '/help' for available commands.[/yellow]")
                         continue
@@ -174,8 +186,10 @@ def _show_help() -> None:
     help_table.add_row("/help", "Show this help message")
     help_table.add_row("/clear", "Clear conversation history")
     help_table.add_row("/stats", "Show conversation statistics")
-    help_table.add_row("exit", "Exit the session")
-    help_table.add_row("quit", "Exit the session")
+    help_table.add_row("/status", "Show session status")
+    help_table.add_row("/auth", "Manage authentication")
+    help_table.add_row("/config", "Manage configuration")
+    help_table.add_row("/quit", "Exit the session")
     
     console.print(help_table)
     console.print("[blue]Tips:[/blue]")

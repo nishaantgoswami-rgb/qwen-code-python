@@ -3,7 +3,7 @@ requires = ["setuptools>=45", "wheel", "setuptools_scm[toml]>=6.2"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "qwen-code"
+name = "qwen-code-py"
 description = "AI-powered coding assistant CLI tool"
 readme = "README.md"
 license = {text = "Apache-2.0"}
@@ -27,6 +27,7 @@ dependencies = [
     "requests>=2.25.0",
     "pyyaml>=5.4.0",
     "rich>=10.0.0",
+    "prompt_toolkit>=3.0.0",
 ]
 dynamic = ["version"]
 
@@ -45,7 +46,7 @@ test = [
 ]
 
 [project.scripts]
-qwen = "qwen_code.cli.main:main"
+qwenpy = "qwen_code.cli.main:main"
 
 [project.urls]
 Homepage = "https://github.com/QwenLM/qwen-code-python"
