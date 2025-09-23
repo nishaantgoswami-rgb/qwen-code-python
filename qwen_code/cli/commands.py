@@ -20,8 +20,8 @@ from rich import print as rich_print
 import threading
 import queue
 
-# Import our enhanced keyboard handler
-from qwen_code.cli.keyboard_handler import KeyboardHandler
+# Import our enhanced interactive input
+from qwen_code.cli.interactive_input import InteractiveInput, Command as InteractiveCommand
 
 console = Console()
 logger = get_logger()
@@ -77,8 +77,18 @@ async def _run_interactive_session(model: str) -> None:
         # Create AI client - for Qwen OAuth, it will use our enhanced OAuth2 client automatically
         ai_client = QwenClient(api_key=api_key, model=model, is_oauth_token=is_oauth_token)
         
-        # Initialize keyboard handler
-        keyboard_handler = KeyboardHandler()
+        # Initialize interactive input with commands
+        interactive_commands = [
+            InteractiveCommand("help", "Display available commands"),
+            InteractiveCommand("clear", "Clear conversation history"),
+            InteractiveCommand("compress", "Compress history to save tokens"),
+            InteractiveCommand("stats", "Show current session information"),
+            InteractiveCommand("exit", "Exit Qwen Code", alt_names=["quit"]),
+            InteractiveCommand("auth", "Authentication management"),
+            InteractiveCommand("session", "Session management"),
+            InteractiveCommand("config", "Configuration management"),
+        ]
+        interactive_input = InteractiveInput(interactive_commands)
         
         # Display welcome message with Rich panel
         welcome_panel = Panel(
@@ -98,8 +108,8 @@ async def _run_interactive_session(model: str) -> None:
         
         while True:
             try:
-                # Get user input with enhanced keyboard handling
-                user_input = keyboard_handler.get_input_with_features()
+                # Get user input with enhanced interactive input handling
+                user_input = interactive_input.run()
                 
                 # Special handling for keyboard interrupts
                 if user_input == 'exit':
@@ -108,26 +118,30 @@ async def _run_interactive_session(model: str) -> None:
                 
                 # Check for special commands
                 if user_input.startswith('/'):
-                    if user_input == '/help':
+                    # Normalize the command by stripping trailing spaces and extracting the command part
+                    cmd_parts = user_input.strip().split()
+                    cmd = cmd_parts[0] if cmd_parts else user_input.strip()
+                    
+                    if cmd == '/help':
                         _show_help()
                         continue
-                    elif user_input == '/clear':
+                    elif cmd == '/clear':
                         messages = []
                         console.print("[cyan]Conversation history cleared[/cyan]")
                         continue
-                    elif user_input == '/stats':
+                    elif cmd == '/stats':
                         _show_stats(messages)
                         continue
-                    elif user_input == '/status':
+                    elif cmd == '/status':
                         _show_status()
                         continue
-                    elif user_input == '/auth':
+                    elif cmd == '/auth':
                         console.print("[yellow]Use 'qwen auth' command to manage authentication[/yellow]")
                         continue
-                    elif user_input == '/config':
+                    elif cmd == '/config':
                         console.print("[yellow]Use 'qwen config' command to manage configuration[/yellow]")
                         continue
-                    elif user_input == '/quit':
+                    elif cmd in ['/quit', '/exit']:
                         console.print("[yellow]Goodbye![/yellow]")
                         break
                     else:

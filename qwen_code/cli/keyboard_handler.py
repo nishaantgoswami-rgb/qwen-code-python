@@ -75,11 +75,10 @@ class KeyboardHandler:
                 elif key == '\x03':  # Ctrl+C
                     raise KeyboardInterrupt
                 elif key == '/':  # Forward slash
-                    user_input += key
-                    print(key, end="", flush=True)
-                    # Show help immediately
+                    # Show help immediately without adding to input buffer
                     self._show_help_inline()
-                    # Continue accepting input
+                    # Restart input collection with empty buffer
+                    return self._get_input_windows()  # Recursively start fresh input
                 elif key == '\t':  # Tab key for auto-completion
                     if user_input.startswith('/'):
                         completed_command = self._auto_complete_command(user_input)
@@ -127,11 +126,10 @@ class KeyboardHandler:
                 elif ord(key) == 3:  # Ctrl+C
                     raise KeyboardInterrupt
                 elif key == '/':  # Forward slash
-                    user_input += key
-                    print(key, end="", flush=True)
-                    # Show help immediately
+                    # Show help immediately without adding to input buffer
                     self._show_help_inline()
-                    # Continue accepting input
+                    # Restart input collection with empty buffer
+                    return self._get_input_unix()  # Recursively start fresh input
                 elif ord(key) == 9:  # Tab key for auto-completion
                     if user_input.startswith('/'):
                         completed_command = self._auto_complete_command(user_input)

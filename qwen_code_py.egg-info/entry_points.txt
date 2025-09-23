@@ -1,2 +1,0 @@
-[console_scripts]
-qwenpy = qwen_code.cli.main:main
