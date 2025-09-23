@@ -78,7 +78,7 @@ class QwenClient(AIClient):
     def _get_api_key(self) -> str:
         """Get a valid API key or OAuth2 token."""
         if self.oauth_client:
-            # Use OAuth token directly instead of trying to exchange it
+            # Use OAuth token directly instead of trying to exchange it through get_dashscope_api_key
             return self.oauth_client.get_access_token()
         elif self.api_key:
             return self.api_key
@@ -114,6 +114,7 @@ class QwenClient(AIClient):
     
     def _get_base_url(self) -> str:
         """Get the base URL for API requests."""
+        # For OAuth tokens, use the resource_url from OAuth response as per TypeScript implementation
         if self.oauth_client and hasattr(self.oauth_client, '_creds'):
             resource_url = self.oauth_client._creds.get("resource_url")
             if resource_url:
@@ -122,11 +123,24 @@ class QwenClient(AIClient):
                     resource_url = f"https://{resource_url}"
                 # Remove trailing slash if present
                 resource_url = resource_url.rstrip("/")
-                # Ensure it has the /v1 suffix like the TypeScript implementation
+                # The resource_url may come in different forms:
+                # - https://portal.qwen.ai -> should become https://portal.qwen.ai/v1 for API
+                # - https://portal.qwen.ai/api/v1 -> already correct for API
                 if not resource_url.endswith("/v1"):
-                    resource_url = f"{resource_url}/v1"
+                    # If it doesn't end with /v1, we need to determine the correct path
+                    if resource_url.endswith("/api"):
+                        # Example: https://portal.qwen.ai/api -> https://portal.qwen.ai/api/v1
+                        resource_url = f"{resource_url}/v1"
+                    elif resource_url.endswith("/api/v1"):
+                        # Already correct format
+                        pass
+                    else:
+                        # Example: https://portal.qwen.ai -> https://portal.qwen.ai/v1
+                        # Based on your debug, this was the working format
+                        resource_url = f"{resource_url}/v1"
                 return resource_url
-        return self.base_url
+        # Fallback to DashScope compatible mode endpoint
+        return "https://dashscope.aliyuncs.com/compatible-mode/v1"
     
     async def chat(self, messages: List[Message], **kwargs) -> AIResponse:
         """Send chat request to Qwen API."""
