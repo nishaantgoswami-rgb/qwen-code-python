@@ -1,0 +1,23 @@
+# Project-specific configuration for Qwen Code
+
+project:
+  name: "My Project"
+  description: "Project description"
+  ignore_patterns:
+    - "node_modules/**"
+    - "*.pyc"
+    - "__pycache__/**"
+    - ".git/**"
+
+analysis:
+  include_patterns:
+    - "src/**/*.py"
+    - "lib/**/*.py"
+    - "*.py"
+  max_file_size: "1MB"
+
+workflows:
+  custom_commands:
+    - name: "analyze"
+      description: "Analyze project architecture"
+      prompt: "Analyze this project's architecture and main components"
