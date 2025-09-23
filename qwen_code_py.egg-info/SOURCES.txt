@@ -7,6 +7,7 @@ requirements.txt
 sample-project-config.yaml
 setup.cfg
 setup.py
+test_enhanced_keyboard.py
 .qwen/agents/ai-integration-specialist.md
 .qwen/agents/auth-architect.md
 .qwen/agents/cli-ux-designer.md
@@ -60,12 +61,12 @@ qwen_code/auth/__pycache__/providers.cpython-313.pyc
 qwen_code/auth/__pycache__/temp_oauth2_client.cpython-313.pyc
 qwen_code/cli/__init__.py
 qwen_code/cli/commands.py
-qwen_code/cli/enhanced_keyboard_handler.py
 qwen_code/cli/keyboard.py
 qwen_code/cli/keyboard_handler.py
 qwen_code/cli/main.py
 qwen_code/cli/__pycache__/__init__.cpython-313.pyc
 qwen_code/cli/__pycache__/commands.cpython-313.pyc
+qwen_code/cli/__pycache__/enhanced_keyboard_handler.cpython-313.pyc
 qwen_code/cli/__pycache__/keyboard.cpython-313.pyc
 qwen_code/cli/__pycache__/keyboard_handler.cpython-313.pyc
 qwen_code/cli/__pycache__/main.cpython-313.pyc
