@@ -1,5 +1,5 @@
 """
-Authentication providers for Qwen Code.
+Authentication providers for Qwen Code following the API specification.
 """
 
 import asyncio
@@ -12,12 +12,13 @@ import secrets
 import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 from datetime import datetime, timedelta
 from urllib.parse import urlencode, parse_qs
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from threading import Thread
 from contextlib import contextmanager
+import httpx
 
 
 @dataclass
@@ -38,6 +39,7 @@ class Credentials:
     refresh_token: Optional[str] = None
     expires_at: Optional[datetime] = None
     metadata: Dict[str, Any] = field(default_factory=dict)
+    client_id: Optional[str] = None
 
 
 class AuthProvider(ABC):
@@ -174,7 +176,11 @@ class QwenOAuthProvider(AuthProvider):
         self.redirect_uri = redirect_uri
         self.client_secret = client_secret
         self.auth_base_url = "https://chat.qwen.ai"
-        self.api_base_url = "https://chat.qwen.ai/api/v1/oauth2"
+        # Use the correct OAuth2 endpoints as per API specification
+        self.api_base_url = f"{self.auth_base_url}/api/v1/oauth2"
+        self.token_url = f"{self.api_base_url}/token"
+        self.authorize_url = f"{self.auth_base_url}/oauth2/authorize"
+        self.device_code_url = f"{self.api_base_url}/device/code"
         
     def has_valid_cached_credentials(self) -> bool:
         """Check if we have valid cached credentials."""
@@ -238,7 +244,8 @@ class QwenOAuthProvider(AuthProvider):
                             provider="qwen_oauth",
                             access_token=access_token,
                             refresh_token=refresh_token,
-                            expires_at=expires_at
+                            expires_at=expires_at,
+                            client_id=self.client_id
                         )
                         
                         return AuthResult(
@@ -270,7 +277,8 @@ class QwenOAuthProvider(AuthProvider):
                             provider="qwen_oauth",
                             access_token=access_token,
                             refresh_token=refresh_token,
-                            expires_at=expires_at
+                            expires_at=expires_at,
+                            client_id=self.client_id
                         )
                         
                         return AuthResult(
@@ -309,7 +317,7 @@ class QwenOAuthProvider(AuthProvider):
                 'code_challenge_method': 'S256'
             }
             
-            auth_url = f"{self.auth_base_url}/oauth2/authorize?{urlencode(auth_params)}"
+            auth_url = f"{self.authorize_url}?{urlencode(auth_params)}"
             
             # Open browser for user authentication
             webbrowser.open(auth_url)
@@ -346,14 +354,16 @@ class QwenOAuthProvider(AuthProvider):
                 provider="qwen_oauth",
                 access_token=token_result.access_token,
                 refresh_token=token_result.refresh_token,
-                expires_at=token_result.expires_at
+                expires_at=token_result.expires_at,
+                client_id=self.client_id
             )
             
             # Save tokens to JSON file for compatibility
             token_data = {
                 'access_token': token_result.access_token,
                 'refresh_token': token_result.refresh_token,
-                'expires_at': token_result.expires_at.isoformat() if token_result.expires_at else None
+                'expires_at': token_result.expires_at.isoformat() if token_result.expires_at else None,
+                'client_id': self.client_id
             }
             
             # Save tokens using credential manager
@@ -398,7 +408,7 @@ class QwenOAuthProvider(AuthProvider):
                         provider="qwen_oauth",
                         access_token=cached_tokens['access_token'],
                         refresh_token=cached_tokens.get('refresh_token'),
-                        expires_at=expires_at.isoformat() if expires_at else None
+                        expires_at=expires_at
                     )
             
             self._credentials = credentials
@@ -410,72 +420,80 @@ class QwenOAuthProvider(AuthProvider):
             )
         
         try:
-            async with aiohttp.ClientSession() as session:
-                # Prepare token refresh request
-                token_data = {
-                    'grant_type': 'refresh_token',
-                    'refresh_token': self._credentials.refresh_token,
-                    'client_id': self.client_id
-                }
-                
-                # Add client secret if provided
-                if self.client_secret:
-                    token_data['client_secret'] = self.client_secret
-                
-                # Make token refresh request with proper headers
-                token_url = f"{self.api_base_url}/token"
-                
-                headers = {
-                    "Content-Type": "application/x-www-form-urlencoded",
-                    "User-Agent": "Qwen-Code-CLI/1.0"
-                }
-                
-                async with session.post(token_url, data=token_data, headers=headers, allow_redirects=False) as response:
-                    if response.status != 200:
-                        error_text = await response.text()
-                        return AuthResult(
-                            success=False,
-                            error_message=f"Token refresh failed with status {response.status}: {error_text}"
-                        )
-                    
-                    token_response = await response.json()
-                    
-                    # Update credentials
-                    access_token = token_response.get('access_token')
-                    refresh_token = token_response.get('refresh_token', self._credentials.refresh_token)
-                    expires_in = token_response.get('expires_in', 3600)
-                    
-                    expires_at = datetime.now() + timedelta(seconds=expires_in)
-                    
-                    # Update stored credentials
-                    self._credentials.access_token = access_token
-                    self._credentials.refresh_token = refresh_token
-                    self._credentials.expires_at = expires_at
-                    
-                    # Save updated credentials
-                    from qwen_code.auth.credentials import CredentialManager
-                    cred_manager = CredentialManager()
-                    cred_manager.store_credentials(self._credentials)
-                    
-                    # Also save to JSON file for compatibility
-                    token_data = {
-                        'access_token': access_token,
-                        'refresh_token': refresh_token,
-                        'expires_at': expires_at.isoformat() if expires_at else None
-                    }
-                    cred_manager.save_tokens_to_json(token_data)
-                    
-                    # Clear DashScope API key cache when OAuth tokens change
-                    from qwen_code.auth.dashscope_exchange import DashScopeTokenExchange
-                    DashScopeTokenExchange.clear_cache()
+            # Prepare token refresh request
+            token_data = {
+                'grant_type': 'refresh_token',
+                'refresh_token': self._credentials.refresh_token,
+                'client_id': self._credentials.client_id if hasattr(self._credentials, 'client_id') else self.client_id
+            }
+            
+            # Add client secret if provided
+            if self.client_secret:
+                token_data['client_secret'] = self.client_secret
+
+            # Make token refresh request with proper headers
+            token_url = self.token_url
+            
+            headers = {
+                "Content-Type": "application/x-www-form-urlencoded",
+                "User-Agent": "Qwen-Code-CLI/1.0"
+            }
+            
+            async with httpx.AsyncClient() as client:
+                response = await client.post(token_url, data=token_data, headers=headers, allow_redirects=False)
+                if response.status != 200:
+                    error_text = response.text
+                    # Try to decode the error response as JSON to get more details
+                    try:
+                        error_response = response.json()
+                        error_msg = error_response.get('error', {}).get('message', error_text)
+                    except json.JSONDecodeError:
+                        error_msg = error_text
                     
                     return AuthResult(
-                        success=True,
-                        access_token=access_token,
-                        refresh_token=refresh_token,
-                        expires_at=expires_at
+                        success=False,
+                        error_message=f"Token refresh failed with status {response.status}: {error_msg}"
                     )
-                    
+                
+                token_response = response.json()
+                
+                # Update credentials
+                access_token = token_response.get('access_token')
+                refresh_token = token_response.get('refresh_token', self._credentials.refresh_token)
+                expires_in = token_response.get('expires_in', 3600)
+                
+                expires_at = datetime.now() + timedelta(seconds=expires_in)
+                
+                # Update stored credentials
+                self._credentials.access_token = access_token
+                self._credentials.refresh_token = refresh_token
+                self._credentials.expires_at = expires_at
+                
+                # Save updated credentials
+                from qwen_code.auth.credentials import CredentialManager
+                cred_manager = CredentialManager()
+                cred_manager.store_credentials(self._credentials)
+                
+                # Also save to JSON file for compatibility
+                token_data = {
+                    'access_token': access_token,
+                    'refresh_token': refresh_token,
+                    'expires_at': expires_at.isoformat() if expires_at else None,
+                    'client_id': self.client_id
+                }
+                cred_manager.save_tokens_to_json(token_data)
+                
+                # Clear DashScope API key cache when OAuth tokens change
+                from qwen_code.auth.dashscope_exchange import DashScopeTokenExchange
+                DashScopeTokenExchange.clear_cache()
+                
+                return AuthResult(
+                    success=True,
+                    access_token=access_token,
+                    refresh_token=refresh_token,
+                    expires_at=expires_at
+                )
+                
         except Exception as e:
             return AuthResult(
                 success=False,
@@ -489,45 +507,55 @@ class QwenOAuthProvider(AuthProvider):
             code_verifier = PKCEHelper.generate_code_verifier()
             code_challenge = PKCEHelper.generate_code_challenge(code_verifier)
             
-            async with aiohttp.ClientSession() as session:
-                # Prepare device code request with PKCE
-                device_data = {
-                    'client_id': self.client_id,
-                    'scope': 'openid profile email model.completion',
-                    'code_challenge': code_challenge,
-                    'code_challenge_method': 'S256'
-                }
+            # Prepare device code request with PKCE
+            device_data = {
+                'client_id': self.client_id,
+                'scope': 'openid profile email model.completion',
+                'code_challenge': code_challenge,
+                'code_challenge_method': 'S256'
+            }
+            
+            # Make device code request with proper headers
+            device_url = self.device_code_url
+            
+            headers = {
+                "Content-Type": "application/x-www-form-urlencoded",
+                "User-Agent": "Qwen-Code-CLI/1.0"
+            }
+            
+            # Add debugging information
+            print(f"DEBUG: Requesting device code from {device_url}")
+            print(f"DEBUG: Client ID: {self.client_id}")
+            print(f"DEBUG: Headers: {headers}")
+            
+            async with httpx.AsyncClient() as client:
+                response = await client.post(device_url, data=device_data, headers=headers, allow_redirects=False)
+                if response.status != 200:
+                    error_text = response.text
+                    print(f"DEBUG: Device code request failed with status {response.status}")
+                    print(f"DEBUG: Response text: {error_text}")
+                    raise Exception(f"Device code request failed with status {response.status}: {error_text}")
                 
-                # Make device code request with proper headers
-                device_url = f"{self.api_base_url}/device/code"
+                device_response = response.json()
+                print(f"DEBUG: Device code response received successfully")
                 
-                headers = {
-                    "Content-Type": "application/x-www-form-urlencoded",
-                    "User-Agent": "Qwen-Code-CLI/1.0"
-                }
+                # Store code_verifier for later use in token exchange
+                device_response['code_verifier'] = code_verifier
+                return device_response
                 
-                async with session.post(device_url, data=device_data, headers=headers, allow_redirects=False) as response:
-                    if response.status != 200:
-                        error_text = await response.text()
-                        raise Exception(f"Device code request failed with status {response.status}: {error_text}")
-                    
-                    device_response = await response.json()
-                    # Store code_verifier for later use in token exchange
-                    device_response['code_verifier'] = code_verifier
-                    return device_response
-                    
         except Exception as e:
+            print(f"DEBUG: Device code request failed with error: {str(e)}")
             raise Exception(f"Device code request failed: {str(e)}")
     
     async def poll_for_token(self, device_code: str, code_verifier: str, interval: int = 5, expires_in: int = 600) -> AuthResult:
         """Poll for token using device code."""
         try:
-            async with aiohttp.ClientSession() as session:
-                start_time = time.time()
-                timeout = expires_in  # Use the expires_in value from device code response
-                
+            start_time = time.time()
+            timeout = expires_in  # Use the expires_in value from device code response
+            
+            async with httpx.AsyncClient() as client:
                 while (time.time() - start_time) < timeout:
-                    # Prepare token request
+                    # Prepare token request - for device code flow, we should not include redirect_uri
                     token_data = {
                         'grant_type': 'urn:ietf:params:oauth:grant-type:device_code',
                         'device_code': device_code,
@@ -535,75 +563,106 @@ class QwenOAuthProvider(AuthProvider):
                         'code_verifier': code_verifier
                     }
                     
-                    # Add client secret if provided
+                    # Add client secret if provided (some OAuth implementations require it for device flow)
                     if self.client_secret:
                         token_data['client_secret'] = self.client_secret
                     
                     # Make token request
-                    token_url = f"{self.api_base_url}/token"
+                    token_url = self.token_url
                     
                     headers = {
                         "Content-Type": "application/x-www-form-urlencoded",
                         "User-Agent": "Qwen-Code-CLI/1.0"
                     }
                     
-                    async with session.post(token_url, data=token_data, headers=headers, allow_redirects=False) as response:
-                        if response.status == 200:
-                            token_response = await response.json()
-                            
-                            access_token = token_response.get('access_token')
-                            refresh_token = token_response.get('refresh_token')
-                            expires_in = token_response.get('expires_in', 3600)
-                            
-                            expires_at = datetime.now() + timedelta(seconds=expires_in)
-                            
-                            # Store credentials
-                            self._credentials = Credentials(
-                                provider="qwen_oauth",
-                                access_token=access_token,
-                                refresh_token=refresh_token,
-                                expires_at=expires_at
-                            )
-                            
-                            return AuthResult(
-                                success=True,
-                                access_token=access_token,
-                                refresh_token=refresh_token,
-                                expires_at=expires_at
-                            )
-                        elif response.status == 400:
-                            error_response = await response.json()
-                            error = error_response.get('error')
-                            
-                            if error == 'authorization_pending':
-                                # Wait for the specified interval before polling again
-                                await asyncio.sleep(interval)
-                                continue
-                            elif error == 'slow_down':
-                                # Wait for longer interval
-                                interval = min(interval * 1.5, 10)
-                                await asyncio.sleep(interval)
-                                continue
-                            else:
-                                # Other error, stop polling
-                                error_description = error_response.get('error_description', 'Unknown error')
-                                return AuthResult(
-                                    success=False,
-                                    error_message=f"Device code authentication failed: {error_description}"
-                                )
-                        else:
-                            error_text = await response.text()
+                    response = await client.post(token_url, data=token_data, headers=headers, allow_redirects=False)
+                    if response.status == 200:
+                        token_response = response.json()
+                        
+                        access_token = token_response.get('access_token')
+                        refresh_token = token_response.get('refresh_token')
+                        expires_in = token_response.get('expires_in', 3600)
+                        
+                        expires_at = datetime.now() + timedelta(seconds=expires_in)
+                        
+                        # Store credentials
+                        self._credentials = Credentials(
+                            provider="qwen_oauth",
+                            access_token=access_token,
+                            refresh_token=refresh_token,
+                            expires_at=expires_at,
+                            client_id=self.client_id
+                        )
+                        
+                        return AuthResult(
+                            success=True,
+                            access_token=access_token,
+                            refresh_token=refresh_token,
+                            expires_at=expires_at
+                        )
+                    elif response.status == 400:
+                        try:
+                            error_response = response.json()
+                        except json.JSONDecodeError:
+                            # If response is not JSON, use the raw text
                             return AuthResult(
                                 success=False,
-                                error_message=f"Device code authentication failed with status {response.status}: {error_text}"
+                                error_message=f"Device code authentication failed with status {response.status}: {response.text}"
                             )
+                        
+                        error = error_response.get('error')
+                        
+                        # According to OAuth2 spec, device flow has specific error codes
+                        if error == 'authorization_pending':
+                            # User has not authorized yet, continue polling
+                            await asyncio.sleep(interval)
+                            continue
+                        elif error == 'slow_down':
+                            # Server is asking us to slow down, increase the interval
+                            interval = min(interval * 1.5, 10)
+                            await asyncio.sleep(interval)
+                            continue
+                        elif error == 'expired_token':
+                            # Device code has expired, return error
+                            error_description = error_response.get('error_description', 'Device code has expired')
+                            return AuthResult(
+                                success=False,
+                                error_message=f"Device code expired: {error_description}"
+                            )
+                        elif error == 'access_denied':
+                            # User denied the authorization
+                            error_description = error_response.get('error_description', 'User denied authorization')
+                            return AuthResult(
+                                success=False,
+                                error_message=f"Access denied: {error_description}"
+                            )
+                        elif error == 'invalid_grant':
+                            # Device code is invalid
+                            error_description = error_response.get('error_description', 'Invalid device code')
+                            return AuthResult(
+                                success=False,
+                                error_message=f"Invalid grant: {error_description}"
+                            )
+                        else:
+                            # Other error, stop polling
+                            error_description = error_response.get('error_description', 'Unknown error')
+                            return AuthResult(
+                                success=False,
+                                error_message=f"Device code authentication failed: {error} - {error_description}"
+                            )
+                    else:
+                        error_text = response.text
+                        return AuthResult(
+                            success=False,
+                            error_message=f"Device code authentication failed with status {response.status}: {error_text}"
+                        )
+            
+            # Timeout reached
+            return AuthResult(
+                success=False,
+                error_message="Device code authentication timed out"
+            )
                 
-                # Timeout reached
-                return AuthResult(
-                    success=False,
-                    error_message="Device code authentication timed out"
-                )
-                    
         except Exception as e:
             return AuthResult(
                 success=False,
@@ -626,12 +685,22 @@ class QwenOAuthProvider(AuthProvider):
             # Display instructions to user
             print(f"Device code authentication:")
             if verification_uri_complete:
-                print(f"1. Go to: {verification_uri_complete}")
+                auth_url = verification_uri_complete
+                print(f"1. Go to: {auth_url}")
             else:
                 verification_uri = device_response.get('verification_uri')
-                print(f"1. Go to: {verification_uri}")
+                auth_url = verification_uri
+                print(f"1. Go to: {auth_url}")
                 print(f"2. Enter code: {user_code}")
             print(f"3. Wait for authentication to complete...")
+            
+            # Attempt to open the browser automatically
+            try:
+                import webbrowser
+                webbrowser.open(auth_url)
+            except Exception as e:
+                print(f"Could not automatically open browser: {e}")
+                print("Please manually open the URL in your browser.")
             
             # Poll for token
             result = await self.poll_for_token(device_code, code_verifier, interval, expires_in)
@@ -660,51 +729,58 @@ class QwenOAuthProvider(AuthProvider):
     async def _exchange_code_for_tokens(self, auth_code: str, code_verifier: str) -> AuthResult:
         """Exchange authorization code for access and refresh tokens."""
         try:
-            async with aiohttp.ClientSession() as session:
-                # Prepare token request
-                token_data = {
-                    'grant_type': 'authorization_code',
-                    'code': auth_code,
-                    'redirect_uri': self.redirect_uri,
-                    'client_id': self.client_id,
-                    'code_verifier': code_verifier
-                }
-                
-                # Add client secret if provided
-                if self.client_secret:
-                    token_data['client_secret'] = self.client_secret
-                
-                # Make token exchange request with proper headers
-                token_url = f"{self.api_base_url}/token"
-                
-                headers = {
-                    "Content-Type": "application/x-www-form-urlencoded",
-                    "User-Agent": "Qwen-Code-CLI/1.0"
-                }
-                
-                async with session.post(token_url, data=token_data, headers=headers, allow_redirects=False) as response:
-                    if response.status != 200:
-                        error_text = await response.text()
-                        return AuthResult(
-                            success=False,
-                            error_message=f"Token exchange failed with status {response.status}: {error_text}"
-                        )
-                    
-                    token_response = await response.json()
-                    
-                    access_token = token_response.get('access_token')
-                    refresh_token = token_response.get('refresh_token')
-                    expires_in = token_response.get('expires_in', 3600)
-                    
-                    expires_at = datetime.now() + timedelta(seconds=expires_in)
+            # Prepare token request
+            token_data = {
+                'grant_type': 'authorization_code',
+                'code': auth_code,
+                'redirect_uri': self.redirect_uri,
+                'client_id': self.client_id,
+                'code_verifier': code_verifier
+            }
+            
+            # Add client secret if provided
+            if self.client_secret:
+                token_data['client_secret'] = self.client_secret
+            
+            # Make token exchange request with proper headers
+            token_url = self.token_url
+            
+            headers = {
+                "Content-Type": "application/x-www-form-urlencoded",
+                "User-Agent": "Qwen-Code-CLI/1.0"
+            }
+            
+            async with httpx.AsyncClient() as client:
+                response = await client.post(token_url, data=token_data, headers=headers, allow_redirects=False)
+                if response.status != 200:
+                    error_text = response.text
+                    # Try to decode the error response as JSON to get more details
+                    try:
+                        error_response = response.json()
+                        error_msg = error_response.get('error', {}).get('message', error_text)
+                    except json.JSONDecodeError:
+                        error_msg = error_text
                     
                     return AuthResult(
-                        success=True,
-                        access_token=access_token,
-                        refresh_token=refresh_token,
-                        expires_at=expires_at
+                        success=False,
+                        error_message=f"Token exchange failed with status {response.status}: {error_msg}"
                     )
-                    
+                
+                token_response = response.json()
+                
+                access_token = token_response.get('access_token')
+                refresh_token = token_response.get('refresh_token')
+                expires_in = token_response.get('expires_in', 3600)
+                
+                expires_at = datetime.now() + timedelta(seconds=expires_in)
+                
+                return AuthResult(
+                    success=True,
+                    access_token=access_token,
+                    refresh_token=refresh_token,
+                    expires_at=expires_at
+                )
+                
         except Exception as e:
             return AuthResult(
                 success=False,
@@ -791,3 +867,56 @@ class OpenAICompatibleProvider(AuthProvider):
     def is_valid(self) -> bool:
         """Check if current authentication is valid."""
         return self._credentials is not None and bool(self._credentials.access_token)
+
+
+class RegionalAuthProvider(AuthProvider):
+    """Base class for regional authentication providers like ModelScope, Alibaba Cloud, OpenRouter."""
+    
+    def __init__(self, provider_name: str, api_key: str, base_url: str):
+        super().__init__()
+        self.provider_name = provider_name
+        self.api_key = api_key
+        self.base_url = base_url
+    
+    async def authenticate(self) -> AuthResult:
+        """Authenticate using API key."""
+        self._credentials = Credentials(
+            provider=self.provider_name,
+            access_token=self.api_key
+        )
+        return AuthResult(success=True, access_token=self.api_key)
+    
+    async def refresh_token(self) -> AuthResult:
+        """Refresh authentication token."""
+        # For API key auth, no refresh is needed
+        if self._credentials:
+            return AuthResult(success=True, access_token=self._credentials.access_token)
+        return AuthResult(
+            success=False,
+            error_message="No credentials available"
+        )
+    
+    def is_valid(self) -> bool:
+        """Check if current authentication is valid."""
+        return self._credentials is not None and bool(self._credentials.access_token)
+
+
+class ModelScopeProvider(RegionalAuthProvider):
+    """ModelScope API authentication provider."""
+    
+    def __init__(self, api_key: str, base_url: str = "https://dashscope.aliyuncs.com/api/v1"):
+        super().__init__("modelscope", api_key, base_url)
+
+
+class AlibabaCloudProvider(RegionalAuthProvider):
+    """Alibaba Cloud API authentication provider."""
+    
+    def __init__(self, api_key: str, base_url: str = "https://dashscope.aliyuncs.com/api/v1"):
+        super().__init__("alibaba_cloud", api_key, base_url)
+
+
+class OpenRouterProvider(RegionalAuthProvider):
+    """OpenRouter API authentication provider."""
+    
+    def __init__(self, api_key: str, base_url: str = "https://openrouter.ai/api/v1"):
+        super().__init__("openrouter", api_key, base_url)

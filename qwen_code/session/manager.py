@@ -25,20 +25,176 @@ class Session:
     
     def add_message(self, message: Message) -> None:
         """Add message to session."""
+        
         self.messages.append(message)
         self.updated_at = datetime.now()
-        # In a real implementation, we would calculate actual token count
-        # For now, we'll use a simple approximation
-        self.token_count += len(message.content.split())
+        
+        # Check if token count is already calculated, otherwise calculate it
+        if message.token_count == 0:
+            # Calculate accurate token count for the message using the new enhanced counter
+            from qwen_code.ai.token_counter import AdvancedTokenCounter
+            token_counter = AdvancedTokenCounter(self.model)
+            message.token_count = token_counter.count_message_tokens(message)
+        self.token_count += message.token_count
     
     def compress_history(self, target_tokens: int) -> None:
         """Compress conversation history to target token count."""
-        # Simple compression: remove oldest messages until we're under the target
-        # In a real implementation, we might use more sophisticated techniques
-        while self.token_count > target_tokens and len(self.messages) > 2:
-            # Keep the first message (system prompt) if it exists
-            removed_message = self.messages.pop(1)  # Remove second message (first user message)
-            self.token_count -= len(removed_message.content.split())
+        try:
+            from qwen_code.ai.token_counter import AdvancedTokenCounter
+            
+            if self.token_count <= target_tokens:
+                return  # No compression needed
+                
+            # Initialize token counter
+            token_counter = AdvancedTokenCounter(self.model)
+            
+            # Calculate actual token count for all messages to ensure accuracy
+            total_tokens = 0
+            message_tokens = []
+            
+            for message in self.messages:
+                if message.token_count == 0:
+                    # Calculate token count if not already set
+                    msg_tokens = token_counter.count_message_tokens(message)
+                    message.token_count = msg_tokens
+                else:
+                    msg_tokens = message.token_count
+                message_tokens.append(msg_tokens)
+                total_tokens += msg_tokens
+            
+            self.token_count = total_tokens
+            
+            if self.token_count <= target_tokens:
+                return  # No compression needed after recalculation
+            
+            # Implement smart compression preserving context
+            # Keep system messages and recent exchanges
+            preserved_messages = []
+            preserved_tokens = 0
+            
+            # Always try to keep the first message (system prompt) if it exists
+            if self.messages and self.messages[0].role == "system":
+                system_msg = self.messages[0]
+                preserved_messages.append(system_msg)
+                preserved_tokens += message_tokens[0]
+            
+            # Keep recent messages (last few exchanges) and some key exchanges
+            recent_messages = []
+            recent_tokens = 0
+            
+            # Calculate how many recent messages we can keep
+            # Reserve some tokens for potentially important earlier messages
+            reserved_tokens = min(int(target_tokens * 0.1), 2000)  # Reserve 10% or 2000 tokens, whichever is smaller
+            available_tokens = target_tokens - preserved_tokens - reserved_tokens
+            
+            # Collect recent messages backwards
+            for i in range(len(self.messages) - 1, -1, -1):
+                if self.messages[i].role == "system" and i == 0:
+                    # Skip system message as it's already handled above
+                    continue
+                    
+                msg_tokens = message_tokens[i]
+                
+                if recent_tokens + msg_tokens <= available_tokens:
+                    recent_messages.append((i, self.messages[i], msg_tokens))
+                    recent_tokens += msg_tokens
+                else:
+                    break
+            
+            # Reverse to get them in chronological order
+            recent_messages.reverse()
+            
+            # If we have remaining tokens, look for important earlier messages
+            remaining_tokens = target_tokens - preserved_tokens - recent_tokens
+            
+            # Add important earlier messages if they fit (messages with code or long content that was important)
+            important_messages = []
+            for i in range(len(self.messages)):  # Check all messages for importance 
+                # Skip if this is a system message (already handled) or recent message
+                if (i == 0 and self.messages and self.messages[0].role == "system") or \
+                   any(msg_idx == i for msg_idx, _, _ in recent_messages):
+                    continue
+                    
+                msg_tokens = message_tokens[i]
+                message = self.messages[i]
+                
+                # Check if message is likely important: contains code blocks, or is a long message
+                is_important = (
+                    '```' in message.content or  # Contains code blocks
+                    len(message.content) > 200 or  # Longer message
+                    message.role == "user" and len(message.content.split()) > 20  # Substantial user query
+                )
+                
+                if is_important and remaining_tokens >= msg_tokens:
+                    important_messages.append((i, message, msg_tokens))
+                    remaining_tokens -= msg_tokens
+            
+            # Combine preserved, important, and recent messages in chronological order
+            all_indices = set()
+            final_messages = []
+            
+            # Add system message if preserved
+            if preserved_messages:
+                final_messages.append(preserved_messages[0])
+                all_indices.add(0)
+            
+            # Add important messages in chronological order
+            important_messages.sort(key=lambda x: x[0])  # Sort by index
+            for idx, msg, tokens in important_messages:
+                if idx not in all_indices:
+                    final_messages.append(msg)
+                    all_indices.add(idx)
+            
+            # Add recent messages in chronological order
+            for idx, msg, tokens in recent_messages:
+                if idx not in all_indices:
+                    final_messages.append(msg)
+                    all_indices.add(idx)
+            
+            # Update the session
+            self.messages = final_messages
+            
+            # Recalculate token count
+            self.token_count = sum(token_counter.count_message_tokens(msg) for msg in self.messages)
+            
+            # Ensure we're within the target
+            if self.token_count > target_tokens:
+                # If still over target, do simple truncation as fallback
+                simple_target = target_tokens
+                current_tokens = 0
+                reduced_messages = []
+                
+                for msg in self.messages:
+                    msg_tokens = token_counter.count_message_tokens(msg)
+                    if current_tokens + msg_tokens <= simple_target:
+                        reduced_messages.append(msg)
+                        current_tokens += msg_tokens
+                    else:
+                        break
+                
+                self.messages = reduced_messages
+                self.token_count = current_tokens
+                
+        except Exception as e:
+            import logging
+            logging.error(f"Error during session compression: {str(e)}")
+            # Fallback to basic compression if the smart approach fails
+            basic_target = target_tokens
+            current_tokens = 0
+            reduced_messages = []
+            
+            for message in self.messages:
+                from qwen_code.ai.token_counter import AdvancedTokenCounter
+                token_counter = AdvancedTokenCounter(self.model)
+                msg_tokens = token_counter.count_message_tokens(message)
+                if current_tokens + msg_tokens <= basic_target:
+                    reduced_messages.append(message)
+                    current_tokens += msg_tokens
+                else:
+                    break
+            
+            self.messages = reduced_messages
+            self.token_count = current_tokens
 
 
 class SessionManager:
@@ -88,11 +244,32 @@ class SessionManager:
         # Add message to session in memory
         self.current_session.add_message(message)
         
+        # Check if we need to compress the session
+        if self.current_session.token_count > self.config.token_limit:
+            await self.compress_current_session()
+        
         # Save message to database
         await self.message_repo.add_message(self.current_session.id, message)
         
         # Update session in database
         await self.session_repo.update_session(self.current_session)
+    
+    async def check_session_compression(self) -> bool:
+        """Check if current session needs compression and compress if needed.
+        
+        Returns True if compression was performed, False otherwise.
+        """
+        if not self.current_session:
+            return False
+            
+        # Calculate the threshold for compression based on compression_threshold
+        compression_threshold_tokens = int(self.config.token_limit * self.config.compression_threshold)
+        
+        if self.current_session.token_count > compression_threshold_tokens:
+            await self.compress_current_session()
+            return True
+            
+        return False
     
     async def compress_current_session(self) -> None:
         """Compress the current session history."""

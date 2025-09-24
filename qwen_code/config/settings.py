@@ -45,13 +45,14 @@ class Config:
         self.auth_provider = "qwen_oauth"
         self.model_settings = ModelConfig()
         self.session_config = SessionConfig()
+        self.ui_theme: str = "default"  # New UI theme setting
         
         # Auth provider configurations
         self.providers = {
             "qwen_oauth": AuthProviderConfig(
-                client_id=os.getenv("QWEN_CLIENT_ID"),
+                client_id=os.getenv("QWEN_CLIENT_ID", "f0304373b74a44d2b584a3fb70ca9e56"),
                 client_secret=os.getenv("QWEN_CLIENT_SECRET"),
-                redirect_uri="http://localhost:8080/callback"
+                redirect_uri=os.getenv("QWEN_REDIRECT_URI", "http://localhost:8080/callback")
             ),
             "openai_compatible": AuthProviderConfig(
                 api_key=os.getenv("OPENAI_API_KEY"),
@@ -129,6 +130,12 @@ class Config:
                     self.session_config.auto_save = session_data["auto_save"]
                 if "compression_threshold" in session_data:
                     self.session_config.compression_threshold = session_data["compression_threshold"]
+            
+            # Load UI config
+            if "ui" in config_data:
+                ui_data = config_data["ui"]
+                if "theme" in ui_data:
+                    self.ui_theme = ui_data["theme"]
                     
         except (yaml.YAMLError, IOError, KeyError) as e:
             # Log error but don't crash
@@ -169,6 +176,10 @@ class Config:
             self.session_config.auto_save = os.environ["QWEN_AUTO_SAVE"].lower() == "true"
         if "QWEN_COMPRESSION_THRESHOLD" in os.environ:
             self.session_config.compression_threshold = float(os.environ["QWEN_COMPRESSION_THRESHOLD"])
+        
+        # UI config
+        if "QWEN_UI_THEME" in os.environ:
+            self.ui_theme = os.environ["QWEN_UI_THEME"]
     
     def save(self) -> None:
         """Save configuration to persistent storage."""
@@ -203,6 +214,9 @@ class Config:
                 "token_limit": self.session_config.token_limit,
                 "auto_save": self.session_config.auto_save,
                 "compression_threshold": self.session_config.compression_threshold
+            },
+            "ui": {
+                "theme": self.ui_theme
             }
         }
         

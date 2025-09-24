@@ -1,197 +1,152 @@
 """
-Database manager for Qwen Code.
+Enhanced database manager using SQLAlchemy for Qwen Code.
 """
 
-from typing import Optional
-import sqlite3
-import json
+from typing import Optional, Dict, Any, Generator
 from pathlib import Path
 from datetime import datetime
+from contextlib import contextmanager
+from qwen_code.db.models import Base
+from qwen_code.db.connection_pool import get_connection_pool, TransactionManager
+from qwen_code.db.backup_restore import BackupRestoreManager
+from qwen_code.utils.logging import get_logger
+
+
+logger = get_logger()
 
 
 class DatabaseManager:
-    """Central database management class."""
+    """
+    Enhanced database management class using SQLAlchemy with connection pooling.
+    """
     
-    def __init__(self, db_path: Path):
+    def __init__(self, db_path: Path, pool_size: int = 10, max_overflow: int = 20):
         self.db_path = db_path
-        self.connection: Optional[sqlite3.Connection] = None
-    
-    async def initialize(self) -> None:
-        """Initialize database with schema."""
+        self.pool_size = pool_size
+        self.max_overflow = max_overflow
+        self.connection_pool = None
+        self.transaction_manager = None
+        self.backup_manager = None
+        
+    def initialize(self) -> None:
+        """
+        Initialize database with connection pooling and backup manager.
+        """
         # Create database directory if it doesn't exist
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         
-        # Connect to database
-        self.connection = sqlite3.connect(self.db_path)
-        self.connection.row_factory = sqlite3.Row
+        # Initialize connection pool
+        self.connection_pool = get_connection_pool(
+            str(self.db_path), 
+            self.pool_size, 
+            self.max_overflow
+        )
         
-        # Create tables
-        await self._create_tables()
+        # Initialize transaction manager
+        self.transaction_manager = TransactionManager(self.connection_pool)
+        
+        # Initialize backup manager
+        self.backup_manager = BackupRestoreManager(self.db_path)
+        
+        # Create database tables using a temporary engine
+        from sqlalchemy import create_engine
+        temp_engine = create_engine(f"sqlite:///{self.db_path}")
+        Base.metadata.create_all(bind=temp_engine)
+        temp_engine.dispose()
+        # logger.info("Database tables created successfully")  # Removed for cleaner UI
+        
+        # logger.info(f"Database initialized at {self.db_path} with pool_size={self.pool_size}")  # Removed for cleaner UI
     
-    async def _create_tables(self) -> None:
-        """Create database tables."""
-        if not self.connection:
+    def _create_tables(self) -> None:
+        """Create all database tables based on models using a fresh connection."""
+        # Use a temporary engine just for creating tables
+        from sqlalchemy import create_engine
+        temp_engine = create_engine(f"sqlite:///{self.db_path}")
+        Base.metadata.create_all(bind=temp_engine)
+        temp_engine.dispose()
+        logger.info("Database tables created successfully")
+    
+    @contextmanager
+    def get_session(self) -> Generator:
+        """
+        Get a database session from the pool with automatic cleanup.
+        """
+        if self.connection_pool is None:
             raise RuntimeError("Database not initialized")
         
-        cursor = self.connection.cursor()
-        
-        # Sessions table
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS sessions (
-                id TEXT PRIMARY KEY,
-                project_path TEXT,
-                model TEXT NOT NULL,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                token_count INTEGER DEFAULT 0,
-                is_active BOOLEAN DEFAULT TRUE,
-                metadata JSON
-            )
-        """)
-        
-        # Messages table
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS messages (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                session_id TEXT NOT NULL,
-                role TEXT NOT NULL CHECK (role IN ('user', 'assistant', 'system')),
-                content TEXT NOT NULL,
-                token_count INTEGER,
-                timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                metadata JSON,
-                FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
-            )
-        """)
-        
-        # Session stats table
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS session_stats (
-                session_id TEXT PRIMARY KEY,
-                total_messages INTEGER DEFAULT 0,
-                total_tokens INTEGER DEFAULT 0,
-                user_messages INTEGER DEFAULT 0,
-                assistant_messages INTEGER DEFAULT 0,
-                average_response_time REAL,
-                last_activity TIMESTAMP,
-                FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
-            )
-        """)
-        
-        # User preferences table
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS user_preferences (
-                key TEXT PRIMARY KEY,
-                value TEXT NOT NULL,
-                type TEXT NOT NULL CHECK (type IN ('string', 'integer', 'float', 'boolean', 'json')),
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        """)
-        
-        # Auth tokens table
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS auth_tokens (
-                provider TEXT PRIMARY KEY,
-                access_token TEXT NOT NULL,
-                refresh_token TEXT,
-                expires_at TIMESTAMP,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        """)
-        
-        # Project analysis table
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS project_analysis (
-                project_path TEXT PRIMARY KEY,
-                total_files INTEGER,
-                total_lines INTEGER,
-                languages JSON,
-                dependencies JSON,
-                structure JSON,
-                last_analyzed TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                analysis_version TEXT
-            )
-        """)
-        
-        # File metadata table
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS file_metadata (
-                file_path TEXT PRIMARY KEY,
-                project_path TEXT,
-                file_type TEXT,
-                size_bytes INTEGER,
-                lines_count INTEGER,
-                last_modified TIMESTAMP,
-                content_hash TEXT,
-                analysis_data JSON,
-                FOREIGN KEY (project_path) REFERENCES project_analysis(project_path)
-            )
-        """)
-        
-        # Usage stats table
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS usage_stats (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                event_type TEXT NOT NULL,
-                event_data JSON,
-                timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                session_id TEXT,
-                user_id TEXT
-            )
-        """)
-        
-        # API usage table
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS api_usage (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                provider TEXT NOT NULL,
-                model TEXT NOT NULL,
-                prompt_tokens INTEGER,
-                completion_tokens INTEGER,
-                total_tokens INTEGER,
-                cost_estimate REAL,
-                timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                session_id TEXT
-            )
-        """)
-        
-        # Create indexes
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_sessions_project ON sessions(project_path)")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_sessions_created ON sessions(created_at)")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_sessions_active ON sessions(is_active)")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_messages_session ON messages(session_id)")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_messages_timestamp ON messages(timestamp)")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_messages_role ON messages(role)")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_file_metadata_project ON file_metadata(project_path)")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_file_metadata_type ON file_metadata(file_type)")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_usage_stats_type ON usage_stats(event_type)")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_usage_stats_timestamp ON usage_stats(timestamp)")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_api_usage_provider ON api_usage(provider)")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_api_usage_timestamp ON api_usage(timestamp)")
-        
-        self.connection.commit()
+        with self.connection_pool.get_session() as session:
+            yield session
     
-    async def migrate(self, target_version: str) -> None:
-        """Migrate database to target version."""
-        # Implementation will be expanded with actual migration logic
-        pass
-    
-    async def backup(self, backup_path: Path) -> None:
-        """Create database backup."""
-        if not self.connection:
+    @contextmanager
+    def transaction(self):
+        """
+        Get a transactional database session with automatic rollback on error.
+        """
+        if self.connection_pool is None:
             raise RuntimeError("Database not initialized")
         
-        # Create backup directory if it doesn't exist
-        backup_path.parent.mkdir(parents=True, exist_ok=True)
-        
-        # Backup database
-        backup_conn = sqlite3.connect(backup_path)
-        self.connection.backup(backup_conn)
-        backup_conn.close()
+        with self.connection_pool.transaction() as session:
+            yield session
     
     def close(self) -> None:
-        """Close database connection."""
-        if self.connection:
-            self.connection.close()
-            self.connection = None
+        """
+        Close database connections and dispose of connection pool.
+        """
+        if self.connection_pool:
+            self.connection_pool.dispose()
+            # logger.info("Database connections closed")  # Removed for cleaner UI
+    
+    def backup(self, backup_path: Path, encrypt: bool = True, include_sensitive: bool = True) -> bool:
+        """
+        Create database backup with optional encryption.
+        
+        Args:
+            backup_path: Path where the backup should be saved
+            encrypt: Whether to encrypt the backup (default: True)
+            include_sensitive: Whether to include sensitive data (default: True)
+            
+        Returns:
+            True if backup was successful, False otherwise
+        """
+        return self.backup_manager.create_backup(backup_path, encrypt, include_sensitive)
+    
+    def restore(self, backup_path: Path, restore_to: Optional[Path] = None, 
+                decrypt: bool = True) -> bool:
+        """
+        Restore database from backup.
+        
+        Args:
+            backup_path: Path to the backup file
+            restore_to: Path where database should be restored (defaults to original location)
+            decrypt: Whether to decrypt the backup during restore (default: True)
+            
+        Returns:
+            True if restore was successful, False otherwise
+        """
+        return self.backup_manager.restore_backup(backup_path, restore_to, decrypt)
+    
+    def get_backup_info(self, backup_path: Path) -> Optional[Dict[str, Any]]:
+        """
+        Get information about a backup file.
+        
+        Args:
+            backup_path: Path to the backup file
+            
+        Returns:
+            Dictionary with backup information or None if failed
+        """
+        return self.backup_manager.get_backup_info(backup_path)
+    
+    def execute_raw_sql(self, sql: str, params: Optional[Dict[str, Any]] = None) -> Any:
+        """
+        Execute raw SQL query with parameters using a transaction.
+        """
+        from sqlalchemy import text
+        
+        if self.connection_pool is None:
+            raise RuntimeError("Database not initialized")
+        
+        with self.transaction() as session:
+            result = session.execute(text(sql), params or {})
+            session.commit()  # Commit if it's a write operation
+            return result

@@ -24,6 +24,59 @@ except ImportError:
     HAS_MSVCRT = False
     msvcrt = None
 
+# For cursor visibility control on Windows
+try:
+    import ctypes
+    from ctypes import wintypes
+    kernel32 = ctypes.windll.kernel32
+    kernel32.GetConsoleCursorInfo.argtypes = [wintypes.HANDLE, ctypes.POINTER(ctypes.c_byte * 20)]
+    kernel32.GetConsoleCursorInfo.restype = wintypes.BOOL
+    kernel32.SetConsoleCursorInfo.argtypes = [wintypes.HANDLE, ctypes.POINTER(ctypes.c_byte * 20)]
+    kernel32.SetConsoleCursorInfo.restype = wintypes.BOOL
+    kernel32.GetStdHandle.argtypes = [wintypes.DWORD]
+    kernel32.GetStdHandle.restype = wintypes.HANDLE
+    
+    def _hide_cursor_windows():
+        """Hide the Windows console cursor."""
+        try:
+            hConsole = kernel32.GetStdHandle(-11)  # STD_OUTPUT_HANDLE
+            ci = ctypes.c_byte * 20  # CONSOLE_CURSOR_INFO struct
+            buf = ci()
+            if kernel32.GetConsoleCursorInfo(hConsole, buf):
+                # Update the cursor visibility (last byte of the struct)
+                byte_array = bytearray(buf)
+                byte_array[-1] = 0  # Set cursor visibility to 0 (hidden)
+                buf = ci.from_buffer(byte_array)
+                kernel32.SetConsoleCursorInfo(hConsole, buf)
+        except Exception:
+            pass  # If we can't hide cursor, continue normally
+    
+    def _show_cursor_windows():
+        """Show the Windows console cursor."""
+        try:
+            hConsole = kernel32.GetStdHandle(-11)  # STD_OUTPUT_HANDLE
+            ci = ctypes.c_byte * 20  # CONSOLE_CURSOR_INFO struct
+            buf = ci()
+            if kernel32.GetConsoleCursorInfo(hConsole, buf):
+                # Update the cursor visibility (last byte of the struct)
+                byte_array = bytearray(buf)
+                byte_array[-1] = 1  # Set cursor visibility to 1 (visible)
+                buf = ci.from_buffer(byte_array)
+                kernel32.SetConsoleCursorInfo(hConsole, buf)
+        except Exception:
+            pass  # If we can't hide cursor, continue normally
+
+    HAS_CURSOR_CONTROL = True
+except ImportError:
+    # Fallback for systems without ctypes
+    def _hide_cursor_windows():
+        pass
+    
+    def _show_cursor_windows():
+        pass
+    
+    HAS_CURSOR_CONTROL = False
+
 class CompletionMode(Enum):
     IDLE = "IDLE"
     SLASH = "SLASH"
@@ -101,6 +154,7 @@ class InteractiveInput:
         self.buffer = ""
         self.cursor_pos = 0
         self._prev_suggestions_count = 0
+        self._cursor_hidden = False
         
     def render_input_line(self):
         """Render the current input line with cursor."""
@@ -177,74 +231,103 @@ class InteractiveInput:
                 sys.stdout.write(f'\033[{len(self.completion.suggestions)}A')
             sys.stdout.flush()
     
+    def hide_cursor(self):
+        """Hide the terminal cursor."""
+        if sys.platform == "win32":
+            if HAS_CURSOR_CONTROL:
+                _hide_cursor_windows()
+                self._cursor_hidden = True
+        else:
+            # Unix-like systems
+            sys.stdout.write('\033[?25l')  # Hide cursor
+            sys.stdout.flush()
+            self._cursor_hidden = True
+    
+    def show_cursor(self):
+        """Show the terminal cursor."""
+        if sys.platform == "win32":
+            if HAS_CURSOR_CONTROL:
+                _show_cursor_windows()
+                self._cursor_hidden = False
+        else:
+            # Unix-like systems
+            sys.stdout.write('\033[?25h')  # Show cursor
+            sys.stdout.flush()
+            self._cursor_hidden = False
+    
     def handle_key_input(self, key: str) -> Optional[str]:
         """Handle keyboard input and return completed command if any."""
-        if key == '\x03':  # Ctrl+C
-            raise KeyboardInterrupt
-        
-        elif key == '\x04':  # Ctrl+D (EOF)
-            if not self.buffer:
-                raise EOFError
-        
-        elif key == '\r' or key == '\n':  # Enter
-            if self.completion.show_suggestions and self.completion.active_index >= 0:
-                # Auto-complete with selected suggestion
-                suggestion = self.completion.get_active_suggestion()
-                if suggestion:
-                    self.buffer = f'/{suggestion.value} '
-                    self.cursor_pos = len(self.buffer)
-                    self.completion.show_suggestions = False
-                    return None
-            else:
-                # Submit the current buffer
-                result = self.buffer.strip()
-                self.buffer = ""
-                self.cursor_pos = 0
-                self.completion.show_suggestions = False
-                return result
-        
-        elif key == '\t':  # Tab - autocomplete
-            if self.completion.show_suggestions and self.completion.active_index >= 0:
-                suggestion = self.completion.get_active_suggestion()
-                if suggestion:
-                    self.buffer = f'/{suggestion.value} '
-                    self.cursor_pos = len(self.buffer)
-                    self.completion.show_suggestions = False
-        
-        # Handle arrow keys (Unix and Windows)
-        elif key == '\x1b[A' or key == 'UP':  # Up arrow (Unix: \x1b[A, Windows: UP)
-            if self.completion.show_suggestions:
-                self.completion.navigate_up()
-            return None
-        
-        elif key == '\x1b[B' or key == 'DOWN':  # Down arrow (Unix: \x1b[B, Windows: DOWN)
-            if self.completion.show_suggestions:
-                self.completion.navigate_down()
-            return None
-        
-        elif key == '\x7f' or key == '\b':  # Backspace
-            if self.cursor_pos > 0:
-                self.buffer = self.buffer[:self.cursor_pos-1] + self.buffer[self.cursor_pos:]
-                self.cursor_pos -= 1
-                self.completion.update_suggestions(self.buffer)
-        
-        elif key == '\x1b[D' or key == 'LEFT':  # Left arrow (Unix: \x1b[D, Windows: LEFT)
-            if self.cursor_pos > 0:
-                self.cursor_pos -= 1
-        
-        elif key == '\x1b[C' or key == 'RIGHT':  # Right arrow (Unix: \x1b[C, Windows: RIGHT)
-            if self.cursor_pos < len(self.buffer):
-                self.cursor_pos += 1
-        
-        elif key.isprintable():
-            # Regular character input
-            self.buffer = self.buffer[:self.cursor_pos] + key + self.buffer[self.cursor_pos:]
-            self.cursor_pos += 1
+        try:
+            if key == '\x03':  # Ctrl+C
+                raise KeyboardInterrupt
             
-            # Update suggestions if we're typing a slash command
-            self.completion.update_suggestions(self.buffer)
-        
-        return None
+            elif key == '\x04':  # Ctrl+D (EOF)
+                if not self.buffer:
+                    raise EOFError
+            
+            elif key == '\r' or key == '\n':  # Enter
+                if self.completion.show_suggestions and self.completion.active_index >= 0:
+                    # Auto-complete with selected suggestion
+                    suggestion = self.completion.get_active_suggestion()
+                    if suggestion:
+                        self.buffer = f'/{suggestion.value} '
+                        self.cursor_pos = len(self.buffer)
+                        self.completion.show_suggestions = False
+                        return None
+                else:
+                    # Submit the current buffer
+                    result = self.buffer.strip()
+                    self.buffer = ""
+                    self.cursor_pos = 0
+                    self.completion.show_suggestions = False
+                    return result
+            
+            elif key == '\t':  # Tab - autocomplete
+                if self.completion.show_suggestions and self.completion.active_index >= 0:
+                    suggestion = self.completion.get_active_suggestion()
+                    if suggestion:
+                        self.buffer = f'/{suggestion.value} '
+                        self.cursor_pos = len(self.buffer)
+                        self.completion.show_suggestions = False
+            
+            # Handle arrow keys (Unix and Windows)
+            elif key == '\x1b[A' or key == 'UP':  # Up arrow (Unix: \x1b[A, Windows: UP)
+                if self.completion.show_suggestions:
+                    self.completion.navigate_up()
+                return None
+            
+            elif key == '\x1b[B' or key == 'DOWN':  # Down arrow (Unix: \x1b[B, Windows: DOWN)
+                if self.completion.show_suggestions:
+                    self.completion.navigate_down()
+                return None
+            
+            elif key in ['\x7f', '\b', '\x08']:  # Backspace (DEL, backspace, Ctrl+H on Windows)
+                if self.cursor_pos > 0:
+                    self.buffer = self.buffer[:self.cursor_pos-1] + self.buffer[self.cursor_pos:]
+                    self.cursor_pos -= 1
+                    self.completion.update_suggestions(self.buffer)
+            
+            elif key == '\x1b[D' or key == 'LEFT':  # Left arrow (Unix: \x1b[D, Windows: LEFT)
+                if self.cursor_pos > 0:
+                    self.cursor_pos -= 1
+            
+            elif key == '\x1b[C' or key == 'RIGHT':  # Right arrow (Unix: \x1b[C, Windows: RIGHT)
+                if self.cursor_pos < len(self.buffer):
+                    self.cursor_pos += 1
+            
+            elif key.isprintable():
+                # Regular character input
+                self.buffer = self.buffer[:self.cursor_pos] + key + self.buffer[self.cursor_pos:]
+                self.cursor_pos += 1
+                
+                # Update suggestions if we're typing a slash command
+                self.completion.update_suggestions(self.buffer)
+            
+            return None
+        except Exception as e:
+            # Log the error and return a safe fallback
+            print(f"Error handling key input: {e}")
+            return None
     
     def read_key(self) -> str:
         """Read a single key from stdin."""
@@ -260,7 +343,12 @@ class InteractiveInput:
             return input()
         
         fd = sys.stdin.fileno()
-        old_settings = termios.tcgetattr(fd)
+        try:
+            old_settings = termios.tcgetattr(fd)
+        except termios.error as e:
+            # Handle case where terminal is not in raw mode
+            print(f"Warning: Could not get terminal attributes: {e}")
+            return input()
         
         try:
             tty.setraw(sys.stdin.fileno())
@@ -271,8 +359,16 @@ class InteractiveInput:
                 key += sys.stdin.read(2)
             
             return key
+        except Exception as e:
+            # If there's an error reading the key, return a safe fallback
+            print(f"Error reading key: {e}")
+            return input()
         finally:
-            termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
+            try:
+                termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
+            except termios.error:
+                # If we can't restore terminal settings, warn user
+                print("Warning: Could not restore terminal settings")
 
     def _read_key_windows(self) -> str:
         """Read a single key from stdin on Windows."""
@@ -280,46 +376,59 @@ class InteractiveInput:
             # Fallback for systems without msvcrt
             return input()
         
-        key = msvcrt.getch()
-        
-        # Check if it's a special key (arrow keys, function keys, etc.)
-        if ord(key) == 0 or ord(key) == 224:
-            # Extended key, get the second character - return specific values for arrow keys
-            next_key = msvcrt.getch()
-            if ord(next_key) == 72:  # Up arrow
-                return 'UP'
-            elif ord(next_key) == 80:  # Down arrow
-                return 'DOWN'
-            elif ord(next_key) == 75:  # Left arrow
-                return 'LEFT'
-            elif ord(next_key) == 77:  # Right arrow
-                return 'RIGHT'
-            else:
-                # For other extended keys, return a special marker
-                return f'EXT:{ord(next_key)}'
-        
-        return key.decode('utf-8', errors='ignore')
+        try:
+            key = msvcrt.getch()
+            
+            # Check if it's a special key (arrow keys, function keys, etc.)
+            if ord(key) == 0 or ord(key) == 224:
+                # Extended key, get the second character - return specific values for arrow keys
+                next_key = msvcrt.getch()
+                if ord(next_key) == 72:  # Up arrow
+                    return 'UP'
+                elif ord(next_key) == 80:  # Down arrow
+                    return 'DOWN'
+                elif ord(next_key) == 75:  # Left arrow
+                    return 'LEFT'
+                elif ord(next_key) == 77:  # Right arrow
+                    return 'RIGHT'
+                else:
+                    # For other extended keys, return a special marker
+                    return f'EXT:{ord(next_key)}'
+            
+            return key.decode('utf-8', errors='ignore')
+        except Exception as e:
+            # If there's an error reading the key, return a safe fallback
+            print(f"Error reading key on Windows: {e}")
+            return input()
     
     def run(self) -> str:
         """Main input loop."""
         print("Qwen Code CLI - Type / to see available commands")
         
-        while True:
-            self.render_input_line()
-            self.render_suggestions()
-            
-            try:
-                key = self.read_key()
-                result = self.handle_key_input(key)
+        # Hide the terminal cursor since we're drawing our own
+        self.hide_cursor()
+        
+        try:
+            while True:
+                self.render_input_line()
+                self.render_suggestions()
                 
-                if result is not None:
-                    self.clear_suggestions_display()
-                    return result
+                try:
+                    key = self.read_key()
+                    result = self.handle_key_input(key)
                     
-            except (KeyboardInterrupt, EOFError):
-                self.clear_suggestions_display()
-                print("\nGoodbye!")
-                sys.exit(0)
+                    if result is not None:
+                        self.clear_suggestions_display()
+                        return result
+                        
+                except (KeyboardInterrupt, EOFError):
+                    break
+        finally:
+            # Always show the cursor when exiting
+            self.show_cursor()
+        
+        print("\nGoodbye!")
+        sys.exit(0)
 
 # Example usage
 def main():

@@ -30,14 +30,14 @@ This document defines the enhanced user interface design for the Qwen Code Pytho
 qwen
 
 # Specific operations
-qwen chat [options]
-qwen auth [provider]
-qwen config [get|set|list] [key] [value]
-qwen session [list|show|delete|compress] [session-id]
-qwen project [analyze|init|status]
+qwenpy chat [options]
+qwenpy auth [provider]
+qwenpy config [get|set|list] [key] [value]
+qwenpy session [list|show|delete|compress] [session-id]
+qwenpy project [analyze|init|status]
 
 # Quick actions
-qwen --version
+qwenpy --version
 qwen --help
 qwen --debug
 ```
@@ -45,7 +45,7 @@ qwen --debug
 ### 3.2 Command Hierarchy
 
 ```
-qwen (root)
+qwenpy (root)
 ├── chat                    # Interactive conversation
 │   ├── --model MODEL      # Specify AI model
 │   ├── --session SESSION  # Resume specific session
@@ -244,8 +244,8 @@ Available providers:
   qwen     - Qwen OAuth (Recommended)
   openai   - OpenAI Compatible API
 
-Usage: qwen auth login <provider>
-   or: qwen auth login --device <provider> (for device code flow)
+Usage: qwenpy auth login <provider>
+   or: qwenpy auth login --device <provider> (for device code flow)
 ```
 
 ### 5.2 Device Code Flow
@@ -286,7 +286,7 @@ Expires: 2025-09-24 14:30:00 UTC
 | s3 | /projects/tool   | 2025-09-21 09:45:00 | 22       | 4,891   |
 +----+------------------+---------------------+----------+---------+
 
-Use 'qwen session show <ID>' to view details
+Use 'qwenpy session show <ID>' to view details
 ```
 
 ### 6.2 Session Details
@@ -403,7 +403,7 @@ Analysis completed in 2.3s
 | S3 | Low              | Deprecated Function Usage     | utils.py | 67               |
 +----+------------------+-------------------------------+----------+------------------+
 
-Run 'qwen project fix S1' to address critical issues
+Run 'qwenpy project fix S1' to address critical issues
 ```
 
 ## 9. Error Handling Interface
@@ -416,11 +416,11 @@ Run 'qwen project fix S1' to address critical issues
 Issue: Invalid API key for Qwen OAuth provider
 
 Suggestions:
-• Verify your API key: qwen config get auth.qwen_oauth.api_key
+• Verify your API key: qwenpy config get auth.qwen_oauth.api_key
 • Check key permissions at https://dashscope.console.aliyun.com
-• Try re-authenticating: qwen auth login qwen
+• Try re-authenticating: qwenpy auth login qwen
 
-Need help? Run 'qwen auth --help'
+Need help? Run 'qwenpy auth --help'
 ```
 
 ### 9.2 Network Errors

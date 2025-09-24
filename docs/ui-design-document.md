@@ -28,14 +28,14 @@ This document defines the user interface design for the Qwen Code Python CLI app
 qwen
 
 # Specific operations
-qwen chat [options]
-qwen auth [provider]
-qwen config [get|set|list] [key] [value]
-qwen session [list|show|delete|compress] [session-id]
-qwen project [analyze|init|status]
+qwenpy chat [options]
+qwenpy auth [provider]
+qwenpy config [get|set|list] [key] [value]
+qwenpy session [list|show|delete|compress] [session-id]
+qwenpy project [analyze|init|status]
 
 # Quick actions
-qwen --version
+qwenpy --version
 qwen --help
 qwen --debug
 ```
@@ -43,7 +43,7 @@ qwen --debug
 ### 3.2 Command Hierarchy
 
 ```
-qwen (root)
+qwenpy (root)
 ├── chat                    # Interactive conversation
 │   ├── --model MODEL      # Specify AI model
 │   ├── --session SESSION  # Resume specific session
@@ -188,11 +188,11 @@ Would you like me to explain any of these optimizations in detail?
    Issue: Invalid API key for OpenAI provider
    
    💡 Suggestions:
-   • Verify your API key: qwen config get auth.openai.api_key
+   • Verify your API key: qwenpy config get auth.openai.api_key
    • Check key permissions at https://platform.openai.com/api-keys
-   • Try re-authenticating: qwen auth login openai
+   • Try re-authenticating: qwenpy auth login openai
    
-   Need help? Run 'qwen auth --help'
+   Need help? Run 'qwenpy auth --help'
 
 # Validation error with specific guidance
 ❌ Configuration validation failed
@@ -200,7 +200,7 @@ Would you like me to explain any of these optimizations in detail?
    auth.session.token_limit: Must be between 1,000 and 100,000 (got: 50)
    auth.model.temperature: Must be between 0.0 and 2.0 (got: 3.5)
    
-   Fix with: qwen config set auth.session.token_limit 32000
+   Fix with: qwenpy config set auth.session.token_limit 32000
 ```
 
 ### 5.3 Warning States
@@ -214,7 +214,7 @@ Would you like me to explain any of these optimizations in detail?
 # Configuration warnings
 ⚠️  Using deprecated configuration option 'auth.legacy_mode'
    Please update to 'auth.compatibility_mode'
-   Migration: qwen config migrate --from-legacy
+   Migration: qwenpy config migrate --from-legacy
 ```
 
 ## 6. Progress Indicators
@@ -257,7 +257,7 @@ where you're making individual database calls. Here's what I found:
 
 ```bash
 # Main help
-$ qwen --help
+$ qwenpy --help
 
 Qwen Code - AI-powered coding assistant
 
@@ -278,12 +278,12 @@ OPTIONS:
     --debug         Enable debug mode
 
 EXAMPLES:
-    qwen                    # Start interactive session
-    qwen chat --model gpt-4 # Use specific model
-    qwen auth login qwen    # Authenticate with Qwen
+    qwenpy                    # Start interactive session
+    qwenpy chat --model gpt-4 # Use specific model
+    qwenpy auth login qwen    # Authenticate with Qwen
     qwen project analyze    # Analyze current project
 
-Get more help: qwen <command> --help
+Get more help: qwenpy <command> --help
 ```
 
 ### 7.2 Interactive Help
@@ -453,7 +453,7 @@ class ResponsiveLayout:
 ### 11.1 Interactive Configuration
 
 ```bash
-$ qwen config setup
+$ qwenpy config setup
 
 🔧 Qwen Code Configuration Setup
 

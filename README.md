@@ -25,13 +25,13 @@ pip install qwen-code-py
 
 ```bash
 # Start interactive session
-qwen-code-py
+qwenpy
 
 # Show help
-qwen-code-py --help
+qwenpy --help
 
 # Use specific AI model
-qwen-code-py chat --model gpt-4
+qwenpy chat --model gpt-4
 ```
 
 ## Configuration
@@ -93,8 +93,11 @@ This project is licensed under the Apache License 2.0 - see the LICENSE file for
 
 ## Documentation
 
-For detailed information about using Qwen Code, refer to the documentation in the `docs/` directory:
+For detailed documentation, check out these files:
 
-- [Keyboard Features Guide](docs/keyboard-features.md) - Information about instant command discovery and auto-completion
-- [Configuration Guide](docs/configuration.md) - Detailed configuration options
-- [API Reference](docs/api.md) - Technical API documentation
+- [User Guide](docs/user-guide.md) - Complete guide for end users
+- [API Reference](docs/api-reference.md) - Technical API documentation
+- [Development Guide](docs/development-guide.md) - Contributing and development setup
+- [Technical Requirements](docs/technical-requirements-document.md) - System and feature requirements
+- [Deployment Guide](docs/deployment-guide.md) - Installation and deployment instructions
+- [Enterprise Deployment Guide](docs/enterprise-deployment-guide.md) - Production deployment best practices
