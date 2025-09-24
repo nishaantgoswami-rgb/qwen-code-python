@@ -1,0 +1,56 @@
+version: '3.8'
+
+services:
+  qwen-code:
+    build:
+      context: .
+      target: production
+    container_name: qwen-code
+    volumes:
+      - .:/workspace
+      - qwen-config:/home/qwen/.qwen
+      - /etc/localtime:/etc/localtime:ro  # Keep time in sync
+    environment:
+      - QWEN_CONFIG_DIR=/home/qwen/.qwen
+      - QWEN_LOG_LEVEL=INFO
+      - QWEN_LOG_FILE=/home/qwen/.qwen/logs/qwen-code.log
+      - PYTHONPATH=/workspace
+    ports:
+      - "8000:8000"  # Health check and metrics port
+    stdin_open: true
+    tty: true
+    restart: unless-stopped
+    # Health check configuration
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health/ready"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Optional: Prometheus for monitoring (uncomment to enable)
+  # prometheus:
+  #   image: prom/prometheus:latest
+  #   container_name: qwen-prometheus
+  #   volumes:
+  #     - ./prometheus.yml:/etc/prometheus/prometheus.yml
+  #   ports:
+  #     - "9090:9090"
+  #   depends_on:
+  #     - qwen-code
+  #   restart: unless-stopped
+
+  # Optional: Log aggregation (uncomment to enable)
+  # fluentd:
+  #   image: fluent/fluentd:latest
+  #   container_name: qwen-fluentd
+  #   volumes:
+  #     - ./fluent.conf:/fluentd/etc/fluent.conf
+  #     - qwen-config:/var/log/qwen
+  #   ports:
+  #     - "24224:24224"
+  #   restart: unless-stopped
+
+volumes:
+  qwen-config:
+    driver: local

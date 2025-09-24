@@ -15,12 +15,14 @@ from qwen_code.auth.credentials import CredentialManager, Credentials
 from qwen_code.fs.operations import FileManager, CodebaseAnalysis
 from qwen_code.db.manager import DatabaseManager
 
+import pytest_asyncio
+
 
 class TestFullApplicationIntegration:
     """Comprehensive integration tests for the full Qwen Code application."""
     
     @pytest.fixture
-    async def temp_project(self):
+    def temp_project(self):
         """Create a temporary project for testing."""
         with tempfile.TemporaryDirectory() as tmpdir:
             project_path = Path(tmpdir)
@@ -33,7 +35,7 @@ class TestFullApplicationIntegration:
             yield project_path
     
     @pytest.fixture
-    async def temp_db(self):
+    def temp_db(self):
         """Create a temporary database for testing."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = Path(tmpdir) / "test.db"

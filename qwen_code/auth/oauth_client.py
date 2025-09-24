@@ -157,10 +157,19 @@ class QwenOAuthClient:
         # Display instructions to user
         print("Qwen OAuth Authentication")
         print("=" * 25)
-        print(f"Visit: {device_data['verification_uri_complete']}")
+        auth_url = device_data['verification_uri_complete']
+        print(f"Visit: {auth_url}")
         print(f"Or enter code: {device_data['user_code']}")
         print()
         print("Waiting for authorization...")
+        
+        # Attempt to open the browser automatically
+        try:
+            import webbrowser
+            webbrowser.open(auth_url)
+        except Exception as e:
+            print(f"Could not automatically open browser: {e}")
+            print("Please manually open the URL in your browser.")
         
         # Poll for token
         token_data = self.poll_for_token(

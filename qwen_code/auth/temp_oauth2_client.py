@@ -74,7 +74,16 @@ class QwenOAuth2Client:
         r.raise_for_status()
         device = r.json()
         
-        print("Visit:", device["verification_uri_complete"])
+        auth_url = device["verification_uri_complete"]
+        print("Visit:", auth_url)
+        
+        # Attempt to open the browser automatically
+        try:
+            import webbrowser
+            webbrowser.open(auth_url)
+        except Exception as e:
+            print(f"Could not automatically open browser: {e}")
+            print("Please manually open the URL in your browser.")
         expiry = time.time() + device["expires_in"]
         interval = device.get("interval", 2)
 

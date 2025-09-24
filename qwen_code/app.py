@@ -7,6 +7,7 @@ from qwen_code.auth.credentials import CredentialManager
 from qwen_code.db.manager import DatabaseManager
 from qwen_code.session.manager import SessionManager
 from qwen_code.utils.logging import get_logger
+from qwen_code.security.init import initialize_security
 from pathlib import Path
 
 
@@ -25,25 +26,30 @@ class QwenCodeApplication:
         """Initialize the application."""
         try:
             if not self._initialized:
-                self.logger.info("Initializing Qwen Code application")
+                # Only log important initialization events, not info during startup
+                # self.logger.info("Initializing Qwen Code application")  # Removed for cleaner UI
+                
+                # Initialize security features first
+                initialize_security()
+                # self.logger.info("Security features initialized")  # Removed for cleaner UI
                 
                 # Load configuration
                 await self.config.load()
-                self.logger.info("Configuration loaded successfully")
+                # self.logger.info("Configuration loaded successfully")  # Removed for cleaner UI
                 
                 # Initialize database
                 db_path = Path.home() / ".qwen" / "sessions.db"
                 self.db_manager = DatabaseManager(db_path)
-                await self.db_manager.initialize()
-                self.logger.info("Database initialized successfully")
+                self.db_manager.initialize()
+                # self.logger.info("Database initialized successfully")  # Removed for cleaner UI
                 
                 # Initialize session manager
                 if self.db_manager:
                     self.session_manager = SessionManager(self.config.session_config, self.db_manager)
-                    self.logger.info("Session manager initialized successfully")
+                    # self.logger.info("Session manager initialized successfully")  # Removed for cleaner UI
                 
                 self._initialized = True
-                self.logger.info("Application initialization completed")
+                # self.logger.info("Application initialization completed")  # Removed for cleaner UI
                 
         except Exception as e:
             self.logger.error(f"Failed to initialize application: {str(e)}")

@@ -23,6 +23,7 @@ class Credentials:
     refresh_token: Optional[str] = None
     expires_at: Optional[str] = None  # ISO format datetime string
     metadata: Optional[Dict[str, Any]] = None
+    client_id: Optional[str] = None
     
     def __post_init__(self):
         if self.metadata is None:
@@ -144,7 +145,8 @@ class CredentialManager:
             "access_token": credentials.access_token,
             "refresh_token": credentials.refresh_token,
             "expires_at": credentials.expires_at,  # Already a string from the dataclass
-            "metadata": credentials.metadata
+            "metadata": credentials.metadata,
+            "client_id": credentials.client_id
         }
         creds_json = json.dumps(creds_dict)
         
@@ -201,7 +203,8 @@ class CredentialManager:
                 access_token=creds_dict["access_token"],
                 refresh_token=creds_dict.get("refresh_token"),
                 expires_at=expires_at,
-                metadata=creds_dict.get("metadata")
+                metadata=creds_dict.get("metadata"),
+                client_id=creds_dict.get("client_id")
             )
         except Exception:
             # Decryption failed, possibly due to wrong password

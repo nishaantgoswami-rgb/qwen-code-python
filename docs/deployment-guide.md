@@ -14,10 +14,10 @@ This document provides comprehensive deployment instructions for the Qwen Code P
 pip install qwen-code-py
 
 # Verify installation
-qwen --version
+qwenpy --version
 
 # First-time setup
-qwen config setup
+qwenpy config setup
 ```
 
 #### Development Installation
@@ -239,12 +239,12 @@ scoop install python git
 #### Interactive Setup
 ```bash
 # Run interactive configuration wizard
-qwen config setup
+qwenpy config setup
 
 # Manual configuration
-qwen config set auth.default_provider qwen_oauth
-qwen config set session.token_limit 32000
-qwen config set logging.level INFO
+qwenpy config set auth.default_provider qwen_oauth
+qwenpy config set session.token_limit 32000
+qwenpy config set logging.level INFO
 ```
 
 #### Configuration File
@@ -606,10 +606,10 @@ pip list --outdated
 #### Runtime Issues
 ```bash
 # Check configuration
-qwen config validate
+qwenpy config validate
 
 # Check authentication
-qwen auth status
+qwenpy auth status
 
 # View logs
 tail -f ~/.qwen/logs/qwen-code.log
@@ -643,10 +643,10 @@ cp -r ~/.qwen ~/.qwen.backup
 pip install --upgrade qwen-code
 
 # Verify upgrade
-qwen --version
+qwenpy --version
 
 # Test functionality
-qwen config validate
+qwenpy config validate
 ```
 
 #### Major Version Upgrade
@@ -658,8 +658,8 @@ qwen migrate --dry-run
 qwen migrate --from-version 1.x
 
 # Verify migration
-qwen config validate
-qwen session list
+qwenpy config validate
+qwenpy session list
 ```
 
 ## 11. Rich UI Dependencies
